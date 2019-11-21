@@ -23,10 +23,23 @@ const serverPort = process.env.PORT || 7323;
 const workerPool = new WorkerPool('./readability-worker.js', 10);
 const app = express();
 
-// The app provides only one endpoint: /proxy, which takes a URL and responds
-// with the Readability-parsed text of the content at that URL.
-app.get('/proxy', async function (thisRequest, response) {
-  const url = thisRequest.query.url;
+// TODO: add logging/warning for slow requests
+
+const booleanTrue = /^(t|true|1)*$/i;
+
+function timedFetch (url, options = {}) {
+  const timeout = options.totalTimeout || (options.timeout * 2) || 10000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  options = Object.assign({signal: controller.signal}, options);
+  return fetch(url, options).finally(() => clearTimeout(timer));
+}
+
+async function withParsedData (request, response, next) {
+  const force = booleanTrue.test(request.query.force);
+  const url = request.query.url;
+
   if (!url) {
     return response.status(400).json({
       error: 'You must set the `?url=<url>` querystring parameter.'
@@ -38,11 +51,11 @@ app.get('/proxy', async function (thisRequest, response) {
   try {
     const upstream = await timedFetch(url);
     const html = await upstream.text();
-    const text = await workerPool.send({timeout: 10000}, html, url);
-    if (text) {
-      response
-        .type('text/plain')
-        .send(text);
+    const parsed = await workerPool.send({timeout: 45000}, html, url, force);
+
+    if (parsed) {
+      request.parsedPage = parsed;
+      next();
     }
     else {
       response
@@ -61,16 +74,35 @@ app.get('/proxy', async function (thisRequest, response) {
       console.error('  While processing:', url);
     }
   }
+}
+
+app.get('/proxy', withParsedData, function (request, response) {
+  response
+    .type('text/plain')
+    .send(request.parsedPage.text);
 });
 
-function timedFetch (url, options = {}) {
-  const timeout = options.totalTimeout || (options.timeout * 2) || 10000;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
+app.get('/text', withParsedData, function (request, response) {
+  response
+    .type('text/plain')
+    .send(request.parsedPage.text);
+});
 
-  options = Object.assign({signal: controller.signal}, options);
-  return fetch(url, options).finally(() => clearTimeout(timer));
-}
+app.get('/html', withParsedData, function (request, response) {
+  response
+    .type('text/html')
+    .send(request.parsedPage.html);
+});
+
+app.get('/non-content-html', withParsedData, function (request, response) {
+  response
+    .type('text/html')
+    .send(request.parsedPage.nonContentHtml);
+});
+
+app.get('/all', withParsedData, function (request, response) {
+  response.json(request.parsedPage);
+});
 
 app.listen(serverPort, function () {
   console.log(`Listening on port ${serverPort}`);

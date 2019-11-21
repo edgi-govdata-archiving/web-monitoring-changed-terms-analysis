@@ -13,8 +13,8 @@ const { Worker, parentPort } = require('worker_threads');
 
 class SimpleWorker {
   constructor (sourcePath) {
-    this._worker = new Worker(sourcePath);
-    this._worker.on('message', this._handleMessage.bind(this));
+    this._workerSource = sourcePath;
+    this._worker = this._createWorker();
     this._promise = null;
     this._timer = null;
   }
@@ -24,19 +24,33 @@ class SimpleWorker {
       this._promise = { resolve, reject };
       this._worker.postMessage({id: Math.random(), args});
       if (options && options.timeout) {
-        this._timer = setTimeout(() => this._handleTimoeut, options.timeout);
+        this._timer = setTimeout(() => this._handleTimeout(), options.timeout);
       }
     });
   }
 
   terminate (cause = null) {
+    // NOTE: terminate() returns a promise; it *may* be prudent to wait for it
+    // before regenerating a new worker.
+    console.time('Terminating')
+    const termination = this._worker.terminate()
+      .then(() => console.log('Terminated'))
+      .catch(() => console.error('Failed to terminate'))
+      .finally(() => console.timeEnd('Terminating'));
+    this._worker = this._createWorker();
     if (this._promise) {
       this._handleMessage({error: cause || 'TERMINATED'});
     }
-    return this._worker.terminate();
+    return termination;
   }
 
-  _handleTimoeut () {
+  _createWorker () {
+    const worker = new Worker(this._workerSource);
+    worker.on('message', this._handleMessage.bind(this));
+    return worker;
+  }
+
+  _handleTimeout () {
     this.terminate('TIMEDOUT');
   }
 
