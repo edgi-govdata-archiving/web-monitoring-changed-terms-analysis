@@ -7,7 +7,8 @@ import re
 import sys
 from tqdm import tqdm
 from urllib.parse import urlparse
-from web_monitoring import differs, db
+from web_monitoring import db
+from web_monitoring.diff import differs
 from .sqlite import sqlite_database, write_page_to_sqlite
 from .terms import KEY_TERMS
 from .tools import (CharacterToWordDiffs, changed_ngrams, load_url,
