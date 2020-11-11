@@ -1357,8 +1357,8 @@ raw-body@2.4.0:
     unpipe "1.0.0"
 
 "readability@git://github.com/mozilla/readability.git":
-  version "0.2.0"
-  resolved "git://github.com/mozilla/readability.git#dc34dfd8fa6d5c17801efbc2e115dc368b7117c8"
+  version "0.3.0"
+  resolved "git://github.com/mozilla/readability.git#e7d5bfce8e67cebed8ce5deef9b02223b77dd8f6"
 
 readdirp@~3.2.0:
   version "3.2.0"

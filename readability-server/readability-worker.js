@@ -1,5 +1,5 @@
 const JSDOM = require('jsdom').JSDOM;
-const Readability = require('readability');
+const Readability = require('readability').Readability;
 const WorkerPool = require('./worker-pool');
 const Readable = require('./readability-readerable');
 
