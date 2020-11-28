@@ -14,6 +14,7 @@
 'use strict';
 
 const AbortController = require('abort-controller');
+const bodyParser = require('body-parser');
 const express = require('express');
 const fetch = require('node-fetch');
 const WorkerPool = require('./worker-pool');
@@ -36,8 +37,7 @@ function timedFetch (url, options = {}) {
   return fetch(url, options).finally(() => clearTimeout(timer));
 }
 
-async function withParsedData (request, response, next) {
-  const force = booleanTrue.test(request.query.force);
+async function loadUrlMiddleware (request, response, next) {
   const url = request.query.url;
 
   if (!url) {
@@ -51,17 +51,8 @@ async function withParsedData (request, response, next) {
   try {
     const upstream = await timedFetch(url);
     const html = await upstream.text();
-    const parsed = await workerPool.send({timeout: 45000}, html, url, force);
-
-    if (parsed) {
-      request.parsedPage = parsed;
-      next();
-    }
-    else {
-      response
-        .status(422)
-        .json({error: `Could not parse content at ${url}`});
-    }
+    request.htmlBody = html;
+    next();
   }
   catch (error) {
     if (error.name === 'AbortError') {
@@ -71,36 +62,77 @@ async function withParsedData (request, response, next) {
     else {
       response.status(500).json({error: error.message});
       console.error(error);
-      console.error('  While processing:', url);
+      console.error('  While loading:', url);
     }
   }
 }
 
-app.get('/proxy', withParsedData, function (request, response) {
+const _bodyMiddleware = bodyParser.text({type: 'text/*', limit: '5MB'})
+function readBodyMiddleware (request, response, next) {
+  _bodyMiddleware(request, response, function () {
+    const url = request.query.url;
+    console.log('Processing POST data for:', url);
+    request.htmlBody = request.body;
+    next();
+  });
+}
+
+async function readabilityMiddleware (request, response, next) {
+  const force = booleanTrue.test(request.query.force);
+  const url = request.query.url;
+
+  try {
+    const html = request.htmlBody;
+    const parsed = await workerPool.send({timeout: 45000}, html, url, force);
+
+    if (parsed) {
+      request.parsedPage = parsed;
+      next();
+    }
+    else {
+      response
+        .status(422)
+        .json({error: `Could not parse content for ${url}`});
+    }
+  }
+  catch (error) {
+    response.status(500).json({error: error.message});
+    console.error(error);
+    console.error('  While processing:', url);
+  }
+}
+
+app.get('/proxy', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
   response
     .type('text/plain')
     .send(request.parsedPage.text);
 });
 
-app.get('/text', withParsedData, function (request, response) {
+app.get('/text', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
   response
     .type('text/plain')
     .send(request.parsedPage.text);
 });
 
-app.get('/html', withParsedData, function (request, response) {
+app.post('/text', readBodyMiddleware, readabilityMiddleware, function (request, response) {
+  response
+    .type('text/plain')
+    .send(request.parsedPage.text);
+});
+
+app.get('/html', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
   response
     .type('text/html')
     .send(request.parsedPage.html);
 });
 
-app.get('/non-content-html', withParsedData, function (request, response) {
+app.get('/non-content-html', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
   response
     .type('text/html')
     .send(request.parsedPage.nonContentHtml);
 });
 
-app.get('/all', withParsedData, function (request, response) {
+app.get('/all', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
   response.json(request.parsedPage);
 });
 
