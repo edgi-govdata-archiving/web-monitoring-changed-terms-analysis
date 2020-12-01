@@ -126,13 +126,29 @@ app.get('/html', loadUrlMiddleware, readabilityMiddleware, function (request, re
     .send(request.parsedPage.html);
 });
 
+app.post('/html', readBodyMiddleware, readabilityMiddleware, function (request, response) {
+  response
+    .type('text/html')
+    .send(request.parsedPage.html);
+});
+
 app.get('/non-content-html', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
   response
     .type('text/html')
     .send(request.parsedPage.nonContentHtml);
 });
 
+app.post('/non-content-html', readBodyMiddleware, readabilityMiddleware, function (request, response) {
+  response
+    .type('text/html')
+    .send(request.parsedPage.nonContentHtml);
+});
+
 app.get('/all', loadUrlMiddleware, readabilityMiddleware, function (request, response) {
+  response.json(request.parsedPage);
+});
+
+app.post('/all', readBodyMiddleware, readabilityMiddleware, function (request, response) {
   response.json(request.parsedPage);
 });
 
